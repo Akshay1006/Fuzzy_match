@@ -1,5 +1,6 @@
 # please pip install google translator
 # pip install googletrans==3.1.0a0
+# pip install unidecode
 
 import pandas as pd
 import numpy as np
@@ -64,7 +65,8 @@ def data_cleaning(df,key_var,cols):
     
     return df1  
         
-
+        
+#Call this function for your solution with star rating as an added feature
 def tf_idf_vectorizer(df,vectorizer,star):
     
     X1 = vectorizer.transform(df['combined_str']) #convert the data to matrix form and create grams
@@ -107,14 +109,21 @@ def data_selection(p1,p2,similarity,debugging):
         newdf = pd.merge(newdf,p2[p2_keys],how='left',on = 'p2.key')
     
     #Choosing the top ranked key
+    #for P1.key
     tmp = newdf.groupby('p1.key').cos_sim.nlargest(1).reset_index()
     merged = pd.merge(newdf, tmp, left_index=True, right_on='level_1',how='inner')
-    merged.rename(columns={"p1.key_x": "p1.key"},inplace=True)
+    #For P2.key
+    tmp1 = merged.groupby('p2.key').cos_sim_x.nlargest(1).reset_index()
+    merged = pd.merge(merged, tmp1, left_index=True, right_on='level_1',how='inner')
+    
+    merged.rename(columns={"p1.key_x": "p1.key","p2.key_x": "p2.key","cos_sim_x_x": "cos_sim"},inplace=True)
     print(merged.shape)
     merged.drop_duplicates(subset=['p1.key','p2.key'],inplace=True)
     print(merged.shape)
+    merged = merged[merged['cos_sim'] >= 0.25] #To instill confidence on the scores
     
     return merged
+    
     
 
 def output_func(input_file):
@@ -128,12 +137,12 @@ def output_func(input_file):
     p1_proc = data_cleaning(p1,'p1.key',p1cols)
     p2_proc = data_cleaning(p2,'p2.key',p2cols)
     
-    #TF-IDF vectorizer called here - n-grams are fixed to try 2,3 and 4. It can be changed also
-    vectorizer = TfidfVectorizer(analyzer='char',ngram_range=(2,4))
+    #TF-IDF vectorizer called here - n-grams are fixed to try 2,3,4 and 5. It can be changed also
+    vectorizer = TfidfVectorizer(analyzer='char',ngram_range=(2,5))
     vectorizer.fit(p1_proc['combined_str'].append(p2_proc['combined_str']))
     
-    #We have treated star rating in a different way and hence, given in a separate way
-    s1,s2 = tf_idf_vectorizer(p1_proc,vectorizer,'p1.star_rating'),tf_idf_vectorizer(p2_proc,vectorizer,'p2.star_rating')
+    #Generate sparse matrix for computation - This does not include star rating in this
+    s1,s2 = vectorizer.transform(p1_proc['combined_str']),vectorizer.transform(p2_proc['combined_str'])
     
     similarities = cosine_similarity(s1,s2)#Generate a matrix for similarities
     similarities = similarities.reshape(s1.shape[0]*s2.shape[0],1)#Reshaping the data
